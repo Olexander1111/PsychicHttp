@@ -27,7 +27,7 @@
 #include "MD5Builder.h"
 #include "UrlEncode.h"
 #include "esp_random.h"
-#include <ArduinoJson.h>
+#include <GSON.h>
 #include <esp_http_server.h>
 #include <libb64/cencode.h>
 #include <list>
@@ -62,7 +62,7 @@ typedef std::function<void(PsychicClient* client)> PsychicClientCallback;
 
 // callback definitions
 typedef std::function<esp_err_t(PsychicRequest* request, PsychicResponse* response)> PsychicHttpRequestCallback;
-typedef std::function<esp_err_t(PsychicRequest* request, PsychicResponse* response, JsonVariant& json)> PsychicJsonRequestCallback;
+typedef std::function<esp_err_t(PsychicRequest* request, PsychicResponse* response, gson::Parser& json)> PsychicJsonRequestCallback;
 typedef std::function<esp_err_t(PsychicRequest* request, const String& filename, uint64_t index, uint8_t* data, size_t len, bool final)> PsychicUploadCallback;
 
 struct HTTPHeader {
