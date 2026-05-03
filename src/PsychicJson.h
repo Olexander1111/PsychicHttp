@@ -1,9 +1,6 @@
 // PsychicJson.h
 /*
-  Async Response to use with ArduinoJson and AsyncWebServer
-  Written by Andrew Melvin (SticilFace) with help from me-no-dev and BBlanchon.
-  Ported to PsychicHttp by Zach Hoeken
-
+  Async Response to use with GSON
 */
 #ifndef PSYCHIC_JSON_H_
 #define PSYCHIC_JSON_H_
@@ -11,80 +8,73 @@
 #include "ChunkPrinter.h"
 #include "PsychicRequest.h"
 #include "PsychicWebHandler.h"
-#include <ArduinoJson.h>
-
-#if ARDUINOJSON_VERSION_MAJOR == 6
-  #define ARDUINOJSON_6_COMPATIBILITY
-  #ifndef DYNAMIC_JSON_DOCUMENT_SIZE
-    #define DYNAMIC_JSON_DOCUMENT_SIZE 4096
-  #endif
-#endif
-
-#ifndef JSON_BUFFER_SIZE
-  #define JSON_BUFFER_SIZE 4 * 1024
-#endif
+#include <GSON.h>
+#include <cstring>
+#include <functional>
 
 constexpr const char* JSON_MIMETYPE = "application/json";
 
-/*
- * Json Response
- * */
+#ifndef JSON_BUFFER_SIZE
+  #define JSON_BUFFER_SIZE (4 * 1024)
+#endif
+
+#ifndef MAX_JSON_CONTENT_LENGTH
+  #define MAX_JSON_CONTENT_LENGTH 16384
+#endif
+
+class PsychicRequest;
+class PsychicResponse;
+
+using PsychicJsonRequestCallback =
+    std::function<esp_err_t(PsychicRequest*, PsychicResponse*, gson::Parser&)>;
 
 class PsychicJsonResponse : public PsychicResponseDelegate
 {
-  protected:
-#ifdef ARDUINOJSON_5_COMPATIBILITY
-    DynamicJsonBuffer _jsonBuffer;
-#elif ARDUINOJSON_VERSION_MAJOR == 6
-    DynamicJsonDocument _jsonBuffer;
-#else
-    JsonDocument _jsonBuffer;
-#endif
+protected:
+    gson::string _jsonBuffer;
+    bool _isValid = false;
 
-    JsonVariant _root;
-    size_t _contentLength;
-
-  public:
-#ifdef ARDUINOJSON_5_COMPATIBILITY
+public:
     PsychicJsonResponse(PsychicResponse* response, bool isArray = false);
-#elif ARDUINOJSON_VERSION_MAJOR == 6
-    PsychicJsonResponse(PsychicResponse* response, bool isArray = false, size_t maxJsonBufferSize = DYNAMIC_JSON_DOCUMENT_SIZE);
-#else
-    PsychicJsonResponse(PsychicResponse* response, bool isArray = false);
-#endif
+    ~PsychicJsonResponse() = default;
 
-    ~PsychicJsonResponse()
-    {
-    }
+    gson::string& getRoot() { return _jsonBuffer; }
+    const gson::string& getRoot() const { return _jsonBuffer; }
 
-    JsonVariant& getRoot();
-    size_t getLength();
+    size_t    getLength();
+    size_t    getSize() const { return _jsonBuffer.s.length(); }
+    bool      isValid() const { return _isValid; }
 
     esp_err_t send();
 };
 
 class PsychicJsonHandler : public PsychicWebHandler
 {
-  protected:
+protected:
     PsychicJsonRequestCallback _onRequest;
-#if ARDUINOJSON_VERSION_MAJOR == 6
-    const size_t _maxJsonBufferSize = DYNAMIC_JSON_DOCUMENT_SIZE;
-#endif
+    size_t   _maxContentLength;
+    
+    int _method = HTTP_POST | HTTP_PUT | HTTP_PATCH;
 
-  public:
-#ifdef ARDUINOJSON_5_COMPATIBILITY
-    PsychicJsonHandler();
-    PsychicJsonHandler(PsychicJsonRequestCallback onRequest);
-#elif ARDUINOJSON_VERSION_MAJOR == 6
-    PsychicJsonHandler(size_t maxJsonBufferSize = DYNAMIC_JSON_DOCUMENT_SIZE);
-    PsychicJsonHandler(PsychicJsonRequestCallback onRequest, size_t maxJsonBufferSize = DYNAMIC_JSON_DOCUMENT_SIZE);
-#else
-    PsychicJsonHandler();
-    PsychicJsonHandler(PsychicJsonRequestCallback onRequest);
-#endif
+    uint8_t* _bodyBuffer;
+    size_t   _bodyBufferSize;
+
+public:
+    explicit PsychicJsonHandler(size_t maxContentLength = MAX_JSON_CONTENT_LENGTH);
+    PsychicJsonHandler(PsychicJsonRequestCallback onRequest,
+                       size_t maxContentLength = MAX_JSON_CONTENT_LENGTH);
+    ~PsychicJsonHandler();
 
     void onRequest(PsychicJsonRequestCallback fn);
-    virtual esp_err_t handleRequest(PsychicRequest* request, PsychicResponse* response) override;
+    void setMaxContentLength(size_t maxContentLength) { _maxContentLength = maxContentLength; }
+    void setMethod(int method) { _method = method; }
+
+    esp_err_t handleRequest(PsychicRequest* request, PsychicResponse* response) override;
+
+    bool isRequestHandlerTrivial() { return !_onRequest; }
+
+private:
+    void cleanupBuffer() noexcept;
 };
 
-#endif
+#endif // PSYCHIC_JSON_H_
