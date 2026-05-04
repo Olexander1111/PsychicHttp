@@ -1,7 +1,4 @@
 // PsychicJson.h
-/*
-  Async Response to use with GSON
-*/
 #ifndef PSYCHIC_JSON_H_
 #define PSYCHIC_JSON_H_
 
@@ -53,9 +50,7 @@ class PsychicJsonHandler : public PsychicWebHandler
 protected:
     PsychicJsonRequestCallback _onRequest;
     size_t   _maxContentLength;
-    
-    int _method = HTTP_POST | HTTP_PUT | HTTP_PATCH;
-
+    int      _method = HTTP_POST | HTTP_PUT | HTTP_PATCH;
     uint8_t* _bodyBuffer;
     size_t   _bodyBufferSize;
 
@@ -68,6 +63,14 @@ public:
     void onRequest(PsychicJsonRequestCallback fn);
     void setMaxContentLength(size_t maxContentLength) { _maxContentLength = maxContentLength; }
     void setMethod(int method) { _method = method; }
+
+    // Key fix: filter by method at routing time so GET requests are never
+    // claimed by a handler registered only for POST/PUT/PATCH
+    bool canHandle(PsychicRequest* request) override
+    {
+        if (!(_method & request->method())) return false;
+        return PsychicWebHandler::canHandle(request);
+    }
 
     esp_err_t handleRequest(PsychicRequest* request, PsychicResponse* response) override;
 
