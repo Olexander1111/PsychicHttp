@@ -82,7 +82,6 @@ void PsychicJsonHandler::onRequest(PsychicJsonRequestCallback fn)
 {
     _onRequest = std::move(fn);
 }
-
 esp_err_t PsychicJsonHandler::handleRequest(PsychicRequest* request, PsychicResponse* response)
 {
     PsychicWebHandler::handleRequest(request, response);
@@ -90,6 +89,8 @@ esp_err_t PsychicJsonHandler::handleRequest(PsychicRequest* request, PsychicResp
     if (!_onRequest)
         return response->send(500, "text/plain", "No handler configured");
 
+    // canHandle() already enforced the method mask, so any request that
+    // reaches here has an allowed method.  Decide whether to expect a body.
     const http_method requestMethod = request->method();
     const bool hasBody = (requestMethod == HTTP_POST  ||
                           requestMethod == HTTP_PUT   ||
@@ -141,7 +142,7 @@ esp_err_t PsychicJsonHandler::handleRequest(PsychicRequest* request, PsychicResp
         return result;
     }
 
-    // GET (or other bodyless methods): call handler with an empty parser
+    // Bodyless method (GET, HEAD, etc.) — pass an empty parser
     gson::Parser parser;
     return _onRequest(request, response, parser);
 }
