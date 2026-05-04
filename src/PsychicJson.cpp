@@ -90,46 +90,58 @@ esp_err_t PsychicJsonHandler::handleRequest(PsychicRequest* request, PsychicResp
     if (!_onRequest)
         return response->send(500, "text/plain", "No handler configured");
 
-    const size_t contentLen = request->contentLength();
+    const http_method requestMethod = request->method();
+    const bool hasBody = (requestMethod == HTTP_POST  ||
+                          requestMethod == HTTP_PUT   ||
+                          requestMethod == HTTP_PATCH ||
+                          requestMethod == HTTP_DELETE);
 
-    if (contentLen > _maxContentLength)
-        return response->send(413, "text/plain", "Content too large");
-    if (contentLen == 0)
-        return response->send(400, "text/plain", "Empty request body");
+    if (hasBody) {
+        const size_t contentLen = request->contentLength();
 
-    const String contentType = request->contentType();
-    if (!contentType.equalsIgnoreCase(JSON_MIMETYPE))
-        return response->send(400, "text/plain", "Content-Type must be application/json");
+        if (contentLen > _maxContentLength)
+            return response->send(413, "text/plain", "Content too large");
+        if (contentLen == 0)
+            return response->send(400, "text/plain", "Empty request body");
 
-    _bodyBuffer = static_cast<uint8_t*>(malloc(contentLen + 1));
-    if (!_bodyBuffer)
-        return response->send(500, "text/plain", "Out of memory");
+        const String contentType = request->contentType();
+        if (!contentType.equalsIgnoreCase(JSON_MIMETYPE))
+            return response->send(400, "text/plain", "Content-Type must be application/json");
 
-    const String body = request->body();
-    int received = 0;
+        _bodyBuffer = static_cast<uint8_t*>(malloc(contentLen + 1));
+        if (!_bodyBuffer)
+            return response->send(500, "text/plain", "Out of memory");
 
-    if (body.length() == contentLen) {
-        memcpy(_bodyBuffer, body.c_str(), contentLen);
-        received = contentLen;
-    } else {
-        httpd_req_t* req = request->request();
-        received = httpd_req_recv(req, reinterpret_cast<char*>(_bodyBuffer), contentLen);
-        if (received <= 0) {
-            cleanupBuffer();
-            return response->send(400, "text/plain", "Failed to read request body");
+        const String body = request->body();
+        int received = 0;
+
+        if (body.length() == contentLen) {
+            memcpy(_bodyBuffer, body.c_str(), contentLen);
+            received = contentLen;
+        } else {
+            httpd_req_t* req = request->request();
+            received = httpd_req_recv(req, reinterpret_cast<char*>(_bodyBuffer), contentLen);
+            if (received <= 0) {
+                cleanupBuffer();
+                return response->send(400, "text/plain", "Failed to read request body");
+            }
         }
-    }
 
-    _bodyBuffer[received] = '\0';
-    _bodyBufferSize = received;
+        _bodyBuffer[received] = '\0';
+        _bodyBufferSize = received;
 
-    gson::Parser parser;
-    if (!parser.parse(reinterpret_cast<char*>(_bodyBuffer), _bodyBufferSize) || parser.hasError()) {
+        gson::Parser parser;
+        if (!parser.parse(reinterpret_cast<char*>(_bodyBuffer), _bodyBufferSize) || parser.hasError()) {
+            cleanupBuffer();
+            return response->send(400, "text/plain", "Invalid JSON");
+        }
+
+        esp_err_t result = _onRequest(request, response, parser);
         cleanupBuffer();
-        return response->send(400, "text/plain", "Invalid JSON");
+        return result;
     }
 
-    esp_err_t result = _onRequest(request, response, parser);
-    cleanupBuffer();
-    return result;
+    // GET (or other bodyless methods): call handler with an empty parser
+    gson::Parser parser;
+    return _onRequest(request, response, parser);
 }
