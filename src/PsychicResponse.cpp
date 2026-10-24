@@ -131,8 +131,9 @@ esp_err_t PsychicResponse::sendChunk(uint8_t* chunk, size_t chunksize)
   ESP_LOGD(PH_TAG, "Sending chunk: %d", chunksize);
   esp_err_t err = httpd_resp_send_chunk(request(), (char*)chunk, chunksize);
   if (err != ESP_OK) {
-    ESP_LOGE(PH_TAG, "File sending failed (%s)", esp_err_to_name(err));
-
+    //ESP_LOGE(PH_TAG, "File sending failed (%s)", esp_err_to_name(err));
+    ESP_LOGE(PH_TAG, "File sending failed (%s) uri=%s", esp_err_to_name(err), request()->uri);
+    
     /* Abort sending file */
     httpd_resp_sendstr_chunk(this->_request->request(), NULL);
   }
