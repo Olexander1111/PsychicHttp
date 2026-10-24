@@ -4,7 +4,8 @@
 ChunkPrinter::ChunkPrinter(PsychicResponse* response, uint8_t* buffer, size_t len) : _response(response),
                                                                                      _buffer(buffer),
                                                                                      _length(len),
-                                                                                     _pos(0)
+                                                                                     _pos(0),
+                                                                                     _failed(false)
 {
 }
 
@@ -15,16 +16,20 @@ ChunkPrinter::~ChunkPrinter()
 
 size_t ChunkPrinter::write(uint8_t c)
 {
-  esp_err_t err;
+  // Client gone: drop the rest instead of one failing send (and log line) per chunk.
+  if (_failed)
+    return 0;
 
   // if we're full, send a chunk
   if (_pos == _length)
   {
     _pos = 0;
-    err = _response->sendChunk(_buffer, _length);
 
-    if (err != ESP_OK)
-      return 0;
+  if (_response->sendChunk(_buffer, _length) != ESP_OK)
+    {
+      _failed = true;
+       return 0;
+    }
   }
 
   _buffer[_pos] = c;
@@ -34,6 +39,9 @@ size_t ChunkPrinter::write(uint8_t c)
 
 size_t ChunkPrinter::write(const uint8_t* buffer, size_t size)
 {
+  if (_failed)
+    return 0;
+  
   size_t written = 0;
 
   while (written < size)
@@ -49,7 +57,10 @@ size_t ChunkPrinter::write(const uint8_t* buffer, size_t size)
       _pos = 0;
 
       if (_response->sendChunk(_buffer, _length) != ESP_OK)
-        return written;
+      {
+        _failed = true;
+         return written;
+      }
     }
     written += blockSize; // Update if sent correctly.
   }
@@ -58,24 +69,29 @@ size_t ChunkPrinter::write(const uint8_t* buffer, size_t size)
 
 void ChunkPrinter::flush()
 {
-  if (_pos)
-  {
-    _response->sendChunk(_buffer, _pos);
-    _pos = 0;
-  }
+  if (_pos && !_failed)
+   {
+    if (_response->sendChunk(_buffer, _pos) != ESP_OK)
+      _failed = true;
+   }
+  _pos = 0;
 }
 
 size_t ChunkPrinter::copyFrom(Stream& stream)
 {
   size_t count = 0;
 
-  while (stream.available())
+  while (!_failed && stream.available())
   {
 
     if (_pos == _length)
     {
-      _response->sendChunk(_buffer, _length);
       _pos = 0;
+        if (_response->sendChunk(_buffer, _length) != ESP_OK)
+      {
+        _failed = true;
+        break;
+      }
     }
 
     size_t readBytes = stream.readBytes(_buffer + _pos, _length - _pos);
