@@ -11,6 +11,7 @@ class ChunkPrinter : public Print
     uint8_t* _buffer;
     size_t _length;
     size_t _pos;
+    bool _failed;
 
   public:
     ChunkPrinter(PsychicResponse* response, uint8_t* buffer, size_t len);
@@ -22,6 +23,8 @@ class ChunkPrinter : public Print
     size_t copyFrom(Stream& stream);
 
     void flush() override;
+
+    bool failed() const { return _failed; }
 };
 
 #endif
